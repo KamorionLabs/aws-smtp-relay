@@ -32,7 +32,6 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -41,28 +40,12 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
     files:
       - LICENSE.txt
       - README.md
-    # Windows-specific format
-  - id: windows
-    format: zip
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- .Version }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-    rlcp: true
-    files:
-      - LICENSE.txt
-      - README.md
-    builds:
-      - aws-smtp-relay
-    filter:
-      goos:
-        - windows
 
 checksum:
   name_template: 'checksums.txt'
@@ -97,9 +80,6 @@ dockers_v2:
       - "v{{ .Major }}"
       - "v{{ .Major }}.{{ .Minor }}"
     dockerfile: Dockerfile
-    build_flag_templates:
-      - "--pull"
-      - "--platform=linux/amd64,linux/arm64,linux/arm/v7"
     labels:
       "org.opencontainers.image.title": "{{ .ProjectName }}"
       "org.opencontainers.image.description": "SMTP server to relay emails via Amazon SES or Pinpoint using IAM roles"
@@ -123,9 +103,6 @@ dockers_v2:
       - "v{{ .Major }}-alpine"
       - "v{{ .Major }}.{{ .Minor }}-alpine"
     dockerfile: Dockerfile.alpine
-    build_flag_templates:
-      - "--pull"
-      - "--platform=linux/amd64,linux/arm64,linux/arm/v7"
     labels:
       "org.opencontainers.image.title": "{{ .ProjectName }}"
       "org.opencontainers.image.description": "SMTP server to relay emails via Amazon SES or Pinpoint using IAM roles (Alpine variant with shell)"
