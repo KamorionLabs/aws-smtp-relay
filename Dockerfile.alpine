@@ -4,7 +4,9 @@ FROM alpine:latest
 # Install ca-certificates for HTTPS
 RUN apk --no-cache add ca-certificates
 
-COPY aws-smtp-relay /bin/aws-smtp-relay
+# GoReleaser v2 organizes binaries in $TARGETPLATFORM/ (e.g., linux/amd64/)
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/aws-smtp-relay /bin/aws-smtp-relay
 
 # Use non-root user
 USER 65534

@@ -73,8 +73,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build test binary
-        run: CGO_ENABLED=0 go build -o aws-smtp-relay .
+      - name: Build test binary with platform structure
+        run: |
+          # Create platform directory structure matching dockers_v2 ($TARGETPLATFORM/)
+          mkdir -p linux/amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o linux/amd64/aws-smtp-relay .
 
       - name: Build Distroless image (amd64)
         uses: docker/build-push-action@v5
@@ -84,6 +87,8 @@ jobs:
           platforms: linux/amd64
           push: false
           tags: kamorion/aws-smtp-relay:test
+          build-args: |
+            TARGETPLATFORM=linux/amd64
 
       - name: Build Alpine image (amd64)
         uses: docker/build-push-action@v5
@@ -93,3 +98,5 @@ jobs:
           platforms: linux/amd64
           push: false
           tags: kamorion/aws-smtp-relay:test-alpine
+          build-args: |
+            TARGETPLATFORM=linux/amd64
