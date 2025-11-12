@@ -7,3 +7,4 @@
 !main.go
 !go.mod
 !go.sum
+!aws-smtp-relay
