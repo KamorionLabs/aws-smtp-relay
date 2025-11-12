@@ -1,0 +1,24 @@
+name: Sync Docker Hub README
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.dockerhub.md'
+      - '.github/workflows/dockerhub-sync.yml'
+
+jobs:
+  sync-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update Docker Hub Description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: kamorion/aws-smtp-relay
+          readme-filepath: ./README.dockerhub.md
