@@ -41,18 +41,18 @@ type Client interface {
 
 type logEntry struct {
 	Time  time.Time
-	IP    *string
-	From  *string
-	To    []*string
+	IP    string
+	From  string
+	To    []string
 	Error *string
 }
 
 // Log creates a log entry and prints it as JSON to STDOUT.
-func Log(origin net.Addr, from *string, to []*string, err error) {
+func Log(origin net.Addr, from string, to []string, err error) {
 	ip := origin.(*net.TCPAddr).IP.String()
 	entry := &logEntry{
 		Time: time.Now().UTC(),
-		IP:   &ip,
+		IP:   ip,
 		From: from,
 		To:   to,
 	}
@@ -74,17 +74,17 @@ func FilterAddresses(
 	to []string,
 	allowFromRegExp *regexp.Regexp,
 	denyToRegExp *regexp.Regexp,
-) (allowedRecipients []*string, deniedRecipients []*string, err error) {
-	allowedRecipients = []*string{}
-	deniedRecipients = []*string{}
+) (allowedRecipients []string, deniedRecipients []string, err error) {
+	allowedRecipients = []string{}
+	deniedRecipients = []string{}
 	if allowFromRegExp != nil && !allowFromRegExp.MatchString(from) {
 		err = ErrDeniedSender
 	}
 	for k := range to {
-		recipient := &(to)[k]
+		recipient := (to)[k]
 		// Deny all recipients if the sender address is not allowed
 		if err != nil ||
-			(denyToRegExp != nil && denyToRegExp.MatchString(*recipient)) {
+			(denyToRegExp != nil && denyToRegExp.MatchString(recipient)) {
 			deniedRecipients = append(deniedRecipients, recipient)
 		} else {
 			allowedRecipients = append(allowedRecipients, recipient)

@@ -1,18 +1,24 @@
 package relay
 
 import (
+	"context"
 	"net"
 	"regexp"
 
 	"github.com/KamorionLabs/aws-smtp-relay/internal/relay"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/pinpointemail"
-	"github.com/aws/aws-sdk-go/service/pinpointemail/pinpointemailiface"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/pinpointemail"
+	pinpointemailtypes "github.com/aws/aws-sdk-go-v2/service/pinpointemail/types"
 )
+
+// PinpointEmailClient interface for testing
+type PinpointEmailClient interface {
+	SendEmail(context.Context, *pinpointemail.SendEmailInput, ...func(*pinpointemail.Options)) (*pinpointemail.SendEmailOutput, error)
+}
 
 // Client implements the Relay interface.
 type Client struct {
-	pinpointAPI     pinpointemailiface.PinpointEmailAPI
+	pinpointClient  PinpointEmailClient
 	setName         *string
 	allowFromRegExp *regexp.Regexp
 	denyToRegExp    *regexp.Regexp
@@ -32,22 +38,22 @@ func (c Client) Send(
 		c.denyToRegExp,
 	)
 	if err != nil {
-		relay.Log(origin, &from, deniedRecipients, err)
+		relay.Log(origin, from, deniedRecipients, err)
 	}
 	if len(allowedRecipients) > 0 {
-		_, err := c.pinpointAPI.SendEmail(&pinpointemail.SendEmailInput{
+		_, err := c.pinpointClient.SendEmail(context.Background(), &pinpointemail.SendEmailInput{
 			ConfigurationSetName: c.setName,
 			FromEmailAddress:     &from,
-			Destination: &pinpointemail.Destination{
+			Destination: &pinpointemailtypes.Destination{
 				ToAddresses: allowedRecipients,
 			},
-			Content: &pinpointemail.EmailContent{
-				Raw: &pinpointemail.RawMessage{
+			Content: &pinpointemailtypes.EmailContent{
+				Raw: &pinpointemailtypes.RawMessage{
 					Data: data,
 				},
 			},
 		})
-		relay.Log(origin, &from, allowedRecipients, err)
+		relay.Log(origin, from, allowedRecipients, err)
 		if err != nil {
 			return err
 		}
@@ -55,14 +61,18 @@ func (c Client) Send(
 	return err
 }
 
-// New creates a new client with a session.
+// New creates a new client with AWS SDK v2 configuration.
 func New(
 	configurationSetName *string,
 	allowFromRegExp *regexp.Regexp,
 	denyToRegExp *regexp.Regexp,
 ) Client {
+	cfg, err := config.LoadDefaultConfig(context.Background())
+	if err != nil {
+		panic("unable to load SDK config, " + err.Error())
+	}
 	return Client{
-		pinpointAPI:     pinpointemail.New(session.Must(session.NewSession())),
+		pinpointClient:  pinpointemail.NewFromConfig(cfg),
 		setName:         configurationSetName,
 		allowFromRegExp: allowFromRegExp,
 		denyToRegExp:    denyToRegExp,
