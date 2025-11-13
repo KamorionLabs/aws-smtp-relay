@@ -1,11 +1,14 @@
-package relay
+package ses
 
 import (
 	"context"
+	"io"
 	"net"
 	"regexp"
 
+	"github.com/KamorionLabs/aws-smtp-relay/internal"
 	"github.com/KamorionLabs/aws-smtp-relay/internal/relay"
+	"github.com/KamorionLabs/aws-smtp-relay/internal/relay/filter"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	sesv2types "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
@@ -18,11 +21,32 @@ type SESEmailClient interface {
 
 // Client implements the Relay interface.
 type Client struct {
-	sesClient       SESEmailClient
+	SesClient       SESEmailClient
 	setName         *string
 	allowFromRegExp *regexp.Regexp
 	denyToRegExp    *regexp.Regexp
+	allowToRegExp   *regexp.Regexp
+	allowedDomains  []string
+	maxMessageSize  uint
 	arns            *relay.ARNs
+}
+
+func (c Client) Annotate(_clt relay.Client) relay.Client {
+	clt := _clt.(*Client)
+	pclt := c.SesClient
+	if clt.SesClient != nil {
+		pclt = clt.SesClient
+	}
+	return &Client{
+		SesClient:       pclt,
+		setName:         c.setName,
+		allowFromRegExp: c.allowFromRegExp,
+		denyToRegExp:    c.denyToRegExp,
+		allowToRegExp:   c.allowToRegExp,
+		allowedDomains:  c.allowedDomains,
+		maxMessageSize:  c.maxMessageSize,
+		arns:            c.arns,
+	}
 }
 
 // Send uses the client SESEmailClient to send email data via SESv2 API
@@ -30,18 +54,26 @@ func (c Client) Send(
 	origin net.Addr,
 	from string,
 	to []string,
-	data []byte,
+	dr io.Reader,
 ) error {
-	allowedRecipients, deniedRecipients, err := relay.FilterAddresses(
+	allowedRecipients, deniedRecipients, err := filter.FilterAddresses(
 		from,
 		to,
 		c.allowFromRegExp,
 		c.denyToRegExp,
+		c.allowToRegExp,
+		c.allowedDomains,
 	)
 	if err != nil {
-		relay.Log(origin, from, deniedRecipients, err)
+		internal.Log(origin, from, deniedRecipients, err)
 	}
+
 	if len(allowedRecipients) > 0 {
+		data, sendErr := relay.ConsumeToBytes(dr, c.maxMessageSize)
+		if sendErr != nil {
+			return sendErr
+		}
+
 		input := &sesv2.SendEmailInput{
 			ConfigurationSetName: c.setName,
 			FromEmailAddress:     &from,
@@ -54,6 +86,7 @@ func (c Client) Send(
 				},
 			},
 		}
+
 		// Map ARNs to SESv2 format
 		// FromArn and SourceArn both map to FromEmailAddressIdentityArn
 		if c.arns != nil {
@@ -67,11 +100,12 @@ func (c Client) Send(
 				input.FeedbackForwardingEmailAddressIdentityArn = c.arns.ReturnPathArn
 			}
 		}
-		_, err := c.sesClient.SendEmail(context.Background(), input)
-		relay.Log(origin, from, allowedRecipients, err)
-		if err != nil {
-			return err
+
+		_, sendErr = c.SesClient.SendEmail(context.Background(), input)
+		if sendErr != nil {
+			err = sendErr
 		}
+		internal.Log(origin, from, allowedRecipients, err)
 	}
 	return err
 }
@@ -81,6 +115,9 @@ func New(
 	configurationSetName *string,
 	allowFromRegExp *regexp.Regexp,
 	denyToRegExp *regexp.Regexp,
+	allowToRegExp *regexp.Regexp,
+	allowedDomains []string,
+	maxMessageSize uint,
 	arns *relay.ARNs,
 ) Client {
 	cfg, err := config.LoadDefaultConfig(context.Background())
@@ -88,10 +125,13 @@ func New(
 		panic("unable to load SDK config, " + err.Error())
 	}
 	return Client{
-		sesClient:       sesv2.NewFromConfig(cfg),
+		SesClient:       sesv2.NewFromConfig(cfg),
 		setName:         configurationSetName,
 		allowFromRegExp: allowFromRegExp,
 		denyToRegExp:    denyToRegExp,
+		allowToRegExp:   allowToRegExp,
+		allowedDomains:  allowedDomains,
+		maxMessageSize:  maxMessageSize,
 		arns:            arns,
 	}
 }
