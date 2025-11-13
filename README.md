@@ -183,6 +183,8 @@ Usage of aws-smtp-relay:
         Denied recipient emails regular expression
   -e string
         Amazon SES Configuration Set Name
+  -f string
+        Amazon SES FromArn
   -h string
         Server hostname
   -i string
@@ -191,14 +193,22 @@ Usage of aws-smtp-relay:
         TLS key file
   -l string
         Allowed sender emails regular expression
+  -m string
+        Allowed recipient domains (comma-separated)
   -n string
         SMTP service name (default "AWS SMTP Relay")
+  -o string
+        Amazon SES SourceArn
+  -p string
+        Amazon SES ReturnPathArn
   -r string
         Relay API to use (ses|pinpoint) (default "ses")
   -s    Require TLS via STARTTLS extension
   -t    Listen for incoming TLS connections only
   -u string
         Authentication username
+  -w string
+        Allowed recipient emails regular expression
 ```
 
 ### Authentication
@@ -308,29 +318,88 @@ TLS_KEY_PASS="$PASSPHRASE" aws-smtp-relay -c tls/default.crt -k tls/default.key
 
 ### Filtering
 
+All filtering options can be configured either via command-line flags or environment variables.
+
 #### Senders
 
 To limit the allowed sender email addresses, provide an allow list as
 [regular expression](https://golang.org/pkg/regexp/syntax/) via `-l regexp`
-option:
+option or `ALLOW_FROM` environment variable:
 
 ```sh
+# Via command-line flag
 aws-smtp-relay -l '@example\.org$'
+
+# Via environment variable
+export ALLOW_FROM='@example\.org$'
+aws-smtp-relay
 ```
 
 By default, all sender email addresses are allowed.
 
 #### Recipients
 
+**Blacklist Filtering (Deny List)**
+
 To deny certain recipient email addresses, provide a deny list as
 [regular expression](https://golang.org/pkg/regexp/syntax/) via `-d regexp`
-option:
+option or `DENY_TO` environment variable:
 
 ```sh
+# Via command-line flag
 aws-smtp-relay -d 'admin@example\.org$'
+
+# Via environment variable
+export DENY_TO='admin@example\.org$'
+aws-smtp-relay
 ```
 
-By default, all recipient email addresses are allowed.
+**Whitelist Filtering (Allow List)**
+
+To allow only specific recipient email addresses, provide an allow list as
+[regular expression](https://golang.org/pkg/regexp/syntax/) via `-w regexp`
+option or `ALLOW_TO` environment variable:
+
+```sh
+# Via command-line flag
+aws-smtp-relay -w '@example\.org$'
+
+# Via environment variable
+export ALLOW_TO='@example\.org$'
+aws-smtp-relay
+```
+
+**Domain Whitelist Filtering**
+
+To allow only specific recipient domains, provide a comma-separated list via `-m domains`
+option or `ALLOW_TO_DOMAINS` environment variable:
+
+```sh
+# Via command-line flag
+aws-smtp-relay -m example.org,example.com
+
+# Via environment variable
+export ALLOW_TO_DOMAINS='example.org,example.com'
+aws-smtp-relay
+```
+
+**Filtering Precedence**
+
+When multiple recipient filters are configured, they are applied in the following order:
+
+1. **Sender validation**: If `-l` (allowFrom) is set, sender must match the pattern
+2. **Blacklist**: If `-d` (denyTo) is set, recipients matching this pattern are denied
+3. **Whitelist**: If `-w` (allowTo) is set, recipients must match this pattern
+4. **Domain whitelist**: If `-m` (allowToDomains) is set, recipients must have domains in this list
+
+All filters must pass for a recipient to be allowed. For example:
+
+```sh
+# Allow only recipients from example.org or example.com domains, except admin@example.org
+aws-smtp-relay -m example.org,example.com -d '^admin@example\.org$'
+```
+
+By default, all recipient email addresses are allowed (no filters applied).
 
 ### Cross-Account Authorization
 
@@ -495,8 +564,8 @@ make clean
 ## Dependencies
 
 - [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto)
-- [github.com/mhale/smtpd](https://github.com/mhale/smtpd)
-- [github.com/aws/aws-sdk-go](https://github.com/aws/aws-sdk-go)
+- [github.com/emersion/go-smtp](https://github.com/emersion/go-smtp)
+- [github.com/aws/aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2)
 
 ## License
 

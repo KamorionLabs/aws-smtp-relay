@@ -1,6 +1,7 @@
-package relay
+package pinpoint
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/KamorionLabs/aws-smtp-relay/internal/relay"
+	"github.com/KamorionLabs/aws-smtp-relay/internal/relay/filter"
 	"github.com/aws/aws-sdk-go-v2/service/pinpointemail"
 )
 
@@ -53,13 +55,14 @@ func sendHelper(
 	os.Stderr = errWriter
 	func() {
 		c := Client{
-			pinpointClient:  &mockPinpointEmailClient{},
+			PinpointClient:  &mockPinpointEmailClient{},
 			setName:         configurationSetName,
 			allowFromRegExp: allowFromRegExp,
 			denyToRegExp:    denyToRegExp,
+			maxMessageSize:  1024 * 1024,
 		}
 		testData.err = apiErr
-		sendErr = c.Send(origin, from, to, data)
+		sendErr = c.Send(origin, from, to, io.NopCloser(bytes.NewReader(data)))
 		outWriter.Close()
 		errWriter.Close()
 	}()
@@ -152,8 +155,8 @@ func TestSendWithDeniedSender(t *testing.T) {
 			0,
 		)
 	}
-	if sendErr != relay.ErrDeniedSender {
-		t.Errorf("Unexpected error: %s. Expected: %s", sendErr, relay.ErrDeniedSender)
+	if sendErr != filter.ErrDeniedSender {
+		t.Errorf("Unexpected error: %s. Expected: %s", sendErr, filter.ErrDeniedSender)
 	}
 	if len(out) == 0 {
 		t.Error("Unexpected empty stdout")
@@ -185,8 +188,8 @@ func TestSendWithDeniedRecipient(t *testing.T) {
 			to[1],
 		)
 	}
-	if sendErr != relay.ErrDeniedRecipients {
-		t.Errorf("Unexpected error: %s. Expected: %s", sendErr, relay.ErrDeniedRecipients)
+	if sendErr != filter.ErrDeniedRecipients {
+		t.Errorf("Unexpected error: %s. Expected: %s", sendErr, filter.ErrDeniedRecipients)
 	}
 	if len(out) == 0 {
 		t.Error("Unexpected empty stdout")
@@ -244,7 +247,7 @@ func TestNew(t *testing.T) {
 	setName := ""
 	allowFromRegExp, _ := regexp.Compile(`^admin@example\.org$`)
 	denyToRegExp, _ := regexp.Compile(`^bob@example\.org$`)
-	client := New(&setName, allowFromRegExp, denyToRegExp)
+	client := New(&setName, allowFromRegExp, denyToRegExp, nil, []string{}, 1024*1024)
 	_, ok := interface{}(client).(relay.Client)
 	if !ok {
 		t.Error("Unexpected: client is not a relay.Client")

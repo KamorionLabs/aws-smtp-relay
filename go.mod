@@ -1,14 +1,15 @@
 module github.com/KamorionLabs/aws-smtp-relay
 
-go 1.23
+go 1.24.0
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.31.20
 	github.com/aws/aws-sdk-go-v2/service/pinpointemail v1.29.4
-	github.com/aws/aws-sdk-go-v2/service/ses v1.34.11
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.54.4
-	github.com/mhale/smtpd v0.8.0
-	golang.org/x/crypto v0.1.0
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
+	github.com/emersion/go-smtp v0.20.2
+	github.com/spf13/pflag v1.0.10
+	golang.org/x/crypto v0.44.0
 )
 
 require (
