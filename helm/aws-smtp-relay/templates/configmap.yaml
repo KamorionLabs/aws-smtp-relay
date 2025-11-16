@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aws-smtp-relay.fullname" . }}
+  labels:
+    {{- include "aws-smtp-relay.labels" . | nindent 4 }}
+data:
+  ADDR: {{ .Values.config.addr | quote }}
+  NAME: {{ .Values.config.name | quote }}
+  RELAY_API: {{ .Values.config.relayAPI | quote }}
+  {{- if .Values.config.awsRegion }}
+  AWS_REGION: {{ .Values.config.awsRegion | quote }}
+  {{- end }}
+  {{- if .Values.config.setName }}
+  SET_NAME: {{ .Values.config.setName | quote }}
+  {{- end }}
+  {{- if .Values.config.sourceArn }}
+  SOURCE_ARN: {{ .Values.config.sourceArn | quote }}
+  {{- end }}
+  {{- if .Values.config.fromArn }}
+  FROM_ARN: {{ .Values.config.fromArn | quote }}
+  {{- end }}
+  {{- if .Values.config.returnPathArn }}
+  RETURN_PATH_ARN: {{ .Values.config.returnPathArn | quote }}
+  {{- end }}
+  {{- if .Values.config.ips }}
+  IPS: {{ .Values.config.ips | quote }}
+  {{- end }}
+  {{- if .Values.config.allowFrom }}
+  ALLOW_FROM: {{ .Values.config.allowFrom | quote }}
+  {{- end }}
+  {{- if .Values.config.denyTo }}
+  DENY_TO: {{ .Values.config.denyTo | quote }}
+  {{- end }}
+  {{- if .Values.config.allowTo }}
+  ALLOW_TO: {{ .Values.config.allowTo | quote }}
+  {{- end }}
+  {{- if .Values.config.allowToDomains }}
+  ALLOW_TO_DOMAINS: {{ .Values.config.allowToDomains | quote }}
+  {{- end }}
+  MAX_MESSAGE_BYTES: {{ .Values.config.maxMessageBytes | quote }}

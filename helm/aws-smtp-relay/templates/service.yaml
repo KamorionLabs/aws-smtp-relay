@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aws-smtp-relay.fullname" . }}
+  labels:
+    {{- include "aws-smtp-relay.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - port: {{ .Values.service.port }}
+    targetPort: smtp
+    protocol: TCP
+    name: smtp
+  selector:
+    {{- include "aws-smtp-relay.selectorLabels" . | nindent 4 }}

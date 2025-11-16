@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aws-smtp-relay.fullname" . }}
+  labels:
+    {{- include "aws-smtp-relay.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "aws-smtp-relay.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "aws-smtp-relay.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "aws-smtp-relay.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: smtp
+          containerPort: 1025
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: {{ include "aws-smtp-relay.fullname" . }}
+        {{- with .Values.envFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        env:
+        {{- if .Values.config.user }}
+        - name: USER
+          value: {{ .Values.config.user | quote }}
+        {{- end }}
+        {{- if .Values.config.password }}
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "aws-smtp-relay.fullname" . }}
+              key: password
+        {{- end }}
+        {{- if .Values.config.bcryptHash }}
+        - name: BCRYPT_HASH
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "aws-smtp-relay.fullname" . }}
+              key: bcrypt-hash
+        {{- end }}
+        {{- if .Values.config.tls.enabled }}
+        - name: TLS_CERT
+          value: /etc/tls/tls.crt
+        - name: TLS_KEY
+          value: /etc/tls/tls.key
+        {{- if .Values.config.tls.keyPassphrase }}
+        - name: TLS_KEY_PASS
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "aws-smtp-relay.fullname" . }}
+              key: tls-key-passphrase
+        {{- end }}
+        {{- end }}
+        {{- with .Values.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.livenessProbe.enabled }}
+        livenessProbe:
+          {{- toYaml .Values.livenessProbe | nindent 12 }}
+        {{- end }}
+        {{- if .Values.readinessProbe.enabled }}
+        readinessProbe:
+          {{- toYaml .Values.readinessProbe | nindent 12 }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.config.tls.enabled }}
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/tls
+          readOnly: true
+        {{- end }}
+      {{- if .Values.config.tls.enabled }}
+      volumes:
+      - name: tls
+        secret:
+          secretName: {{ include "aws-smtp-relay.fullname" . }}-tls
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

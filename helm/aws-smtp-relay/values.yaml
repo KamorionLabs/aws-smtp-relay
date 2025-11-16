@@ -1,0 +1,163 @@
+# Default values for aws-smtp-relay
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/kamorionlabs/aws-smtp-relay
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# EKS Pod Identity configuration
+# Note: Pod Identity association must be created via AWS CLI:
+# aws eks create-pod-identity-association \
+#   --cluster-name YOUR_CLUSTER \
+#   --namespace smtp \
+#   --service-account aws-smtp-relay \
+#   --role-arn arn:aws:iam::ACCOUNT:role/ROLE_NAME
+podIdentity:
+  enabled: false
+  # Set to true if using EKS Pod Identity (requires agent deployed)
+  # roleArn is NOT configured here - association is done via AWS CLI
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 1025
+  annotations: {}
+
+config:
+  # SMTP server configuration
+  addr: ":1025"
+  name: "aws-smtp-relay"
+
+  # Authentication (optional)
+  # If using CRAM-MD5, provide bcrypt hash
+  # Generate with: htpasswd -bnBC 10 "" password | tr -d ':\n' | sed 's/$2y/$2a/'
+  bcryptHash: ""
+  # Or use plain password (less secure)
+  password: ""
+  user: ""
+
+  # TLS configuration (optional)
+  tls:
+    enabled: false
+    cert: ""
+    key: ""
+    keyPassphrase: ""
+
+  # AWS Relay API (ses or pinpoint)
+  relayAPI: "ses"
+
+  # AWS Region
+  awsRegion: ""
+
+  # SES Configuration Set Name (optional)
+  setName: ""
+
+  # Cross-account ARN support (optional)
+  sourceArn: ""
+  fromArn: ""
+  returnPathArn: ""
+
+  # Filtering configuration
+  # IP whitelist (comma-separated)
+  ips: ""
+
+  # Sender whitelist regex
+  allowFrom: ""
+
+  # Recipient blacklist regex
+  denyTo: ""
+
+  # Recipient whitelist regex
+  allowTo: ""
+
+  # Allowed recipient domains (comma-separated)
+  allowToDomains: ""
+
+  # Maximum message size in bytes
+  maxMessageBytes: 10485760
+
+# Environment variables from existing secrets
+envFrom: []
+# - secretRef:
+#     name: aws-smtp-relay-secrets
+
+# Additional environment variables
+env: []
+
+# Pod annotations
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - aws-smtp-relay
+        topologyKey: kubernetes.io/hostname
+
+# Health check configuration
+livenessProbe:
+  enabled: true
+  tcpSocket:
+    port: smtp
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  tcpSocket:
+    port: smtp
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 3
