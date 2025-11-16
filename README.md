@@ -17,6 +17,7 @@ Pull requests and contributions are welcome!
 
 - [Background](#background)
 - [Docker](#docker)
+- [Kubernetes/Helm](#kuberneteshelm)
 - [Installation](#installation)
 - [Usage](#usage)
   - [Options](#options)
@@ -132,6 +133,70 @@ docker run -d \
   -e AWS_REGION=eu-west-1 \
   kamorion/aws-smtp-relay:edge
 ```
+
+## Kubernetes/Helm
+
+Deploy AWS SMTP Relay on Kubernetes with native AWS authentication via EKS Pod Identity.
+
+### Features
+
+- 🚀 **Easy EKS deployment** with Helm charts
+- 🔐 **Native AWS authentication** via EKS Pod Identity (no IRSA required)
+- 📊 **Horizontal Pod Autoscaling** support
+- 🛡️ **Security-hardened** containers with Pod Security Standards
+- 🔍 **Health checks** and monitoring ready
+- 📈 **Production-ready** with high availability configuration
+
+### Quick Start
+
+```bash
+# 1. Install Helm chart
+helm install aws-smtp-relay ./helm/aws-smtp-relay \
+  --namespace smtp \
+  --create-namespace \
+  --set podIdentity.enabled=true \
+  --set config.awsRegion="us-east-1"
+
+# 2. Create Pod Identity association (via AWS CLI)
+aws eks create-pod-identity-association \
+  --cluster-name YOUR_CLUSTER \
+  --namespace smtp \
+  --service-account aws-smtp-relay \
+  --role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_ROLE_NAME
+
+# 3. Restart pods to apply credentials
+kubectl rollout restart deployment/aws-smtp-relay -n smtp
+```
+
+### Example Configuration
+
+```yaml
+# values.yaml
+podIdentity:
+  enabled: true
+  # Note: IAM role association is created via AWS CLI, not Helm
+
+config:
+  relayAPI: "ses"
+  awsRegion: "us-east-1"
+  allowToDomains: "example.com,example.org"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+```
+
+### Documentation
+
+For complete deployment instructions, including:
+- EKS Pod Identity setup
+- IAM role and policy configuration
+- Helm chart customization
+- Production best practices
+- Troubleshooting guides
+
+See **[EKS Deployment Guide](docs/EKS_DEPLOYMENT.md)** and **[Helm Chart README](helm/aws-smtp-relay/README.md)**.
 
 ## Installation
 

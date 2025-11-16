@@ -1,0 +1,83 @@
+# Example values for EKS deployment with Pod Identity
+#
+# Prerequisites:
+# 1. Install EKS Pod Identity Agent addon on your cluster
+# 2. Create Pod Identity association via AWS CLI (see below)
+#
+# Create association:
+# aws eks create-pod-identity-association \
+#   --cluster-name YOUR_CLUSTER_NAME \
+#   --namespace smtp \
+#   --service-account aws-smtp-relay \
+#   --role-arn arn:aws:iam::123456789012:role/aws-smtp-relay-role
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/kamorionlabs/aws-smtp-relay
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+# Pod Identity is configured via AWS CLI, not Helm values
+podIdentity:
+  enabled: true
+
+serviceAccount:
+  create: true
+  name: "aws-smtp-relay"
+
+service:
+  type: ClusterIP
+  port: 1025
+
+config:
+  addr: ":1025"
+  name: "aws-smtp-relay"
+
+  # Authentication example with bcrypt
+  # Generated with: htpasswd -bnBC 10 "" mypassword | tr -d ':\n' | sed 's/$2y/$2a/'
+  bcryptHash: "$2a$10$abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOP"
+  user: "relay"
+
+  # Use SES in us-east-1
+  relayAPI: "ses"
+  awsRegion: "us-east-1"
+
+  # SES Configuration Set (optional)
+  setName: "my-configuration-set"
+
+  # Cross-account ARNs (optional)
+  # sourceArn: "arn:aws:ses:us-east-1:123456789012:identity/example.com"
+  # fromArn: "arn:aws:ses:us-east-1:123456789012:identity/noreply@example.com"
+  # returnPathArn: "arn:aws:ses:us-east-1:123456789012:identity/bounce@example.com"
+
+  # Filtering
+  allowToDomains: "example.com,example.org"
+  maxMessageBytes: 10485760
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - aws-smtp-relay
+        topologyKey: kubernetes.io/hostname
