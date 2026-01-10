@@ -18,6 +18,12 @@ repos:
         files: ^helm/
         pass_filenames: false
 
+      - id: helm-unittest
+        name: helm unittest
+        entry: bash -c 'for chart in helm/*/Chart.yaml; do chartdir=$(dirname $chart); if [ -d "$chartdir/tests" ]; then docker run --rm -v "$(pwd)/$chartdir:/apps" helmunittest/helm-unittest:3.19.0-1.0.3 . || exit 1; fi; done'
+        language: system
+        files: ^helm/
+        pass_filenames: false
 
       - id: go-fmt
         name: go fmt
