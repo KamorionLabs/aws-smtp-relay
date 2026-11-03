@@ -29,6 +29,7 @@ Pull requests and contributions are welcome!
     - [Recipients](#recipients)
   - [Region](#region)
   - [Credentials](#credentials)
+  - [SMTP replies](#smtp-replies)
   - [Logging](#logging)
 - [Development](#development)
   - [Build](#build)
@@ -330,6 +331,9 @@ option:
 aws-smtp-relay -d 'admin@example\.org$'
 ```
 
+A denied recipient is refused at `RCPT` with `550`, so the client can still
+send the message to the other recipients.
+
 By default, all recipient email addresses are allowed.
 
 ### Cross-Account Authorization
@@ -379,6 +383,25 @@ security credentials for the IAM role are automatically retrieved:
 
 - [IAM Roles for Amazon EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html)
 - [IAM Roles for Tasks](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html)
+
+### SMTP replies
+
+The reply tells the SMTP client whether to try again:
+
+| Result                                                                                                                          | Reply       |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| The API accepted the message                                                                                                    | `250`       |
+| Denied sender (after `DATA`)                                                                                                    | `550 5.7.1` |
+| Denied recipient (at `RCPT`)                                                                                                    | `550 5.1.0` |
+| Throttling, a `429` or `5xx` from the API, a network error or timeout                                                           | `451 4.3.0` |
+| An error of the setup: a `401` or `403` (e.g. `AccessDenied`), `SendingPaused`, `AccountSuspended`, `MailFromDomainNotVerified` | `451 4.3.0` |
+| Any other API error, e.g. `MessageRejected`                                                                                     | `554 5.0.0` |
+
+A `4xx` reply makes the client try again later. A `5xx` reply makes it give up.
+An error of the setup gets `451`: after an operator fixes it, the same message
+goes through, so the client keeps it and does not bounce it.
+The `451` and `554` replies include only the API error code, for example
+`554 5.0.0 Message refused: MessageRejected`. The log has the full error.
 
 ### Logging
 

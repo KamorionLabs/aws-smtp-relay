@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -37,9 +38,16 @@ var (
 )
 
 var ipMap map[string]bool
+var denyToRegExp *regexp.Regexp
 var bcryptHash []byte
 var password []byte
 var relayClient relay.Client
+
+// handler sends the mail and gives the client a reply code that tells it
+// whether to try again.
+func handler(origin net.Addr, from string, to []string, data []byte) error {
+	return relay.Reply(relayClient.Send(origin, from, to, data))
+}
 
 // toStringPtr returns nil for empty strings, otherwise returns a pointer to the string
 func toStringPtr(s string) *string {
@@ -68,7 +76,8 @@ func server() (srv *smtpd.Server, err error) {
 	}
 	srv = &smtpd.Server{
 		Addr:         *addr,
-		Handler:      relayClient.Send,
+		Handler:      handler,
+		HandlerRcpt:  relay.RcptHandler(denyToRegExp),
 		Appname:      *name,
 		Hostname:     *host,
 		TLSRequired:  *startTLS,
@@ -90,7 +99,6 @@ func server() (srv *smtpd.Server, err error) {
 
 func configure() error {
 	var allowFromRegExp *regexp.Regexp
-	var denyToRegExp *regexp.Regexp
 	var err error
 	if *allowFrom != "" {
 		allowFromRegExp, err = regexp.Compile(*allowFrom)

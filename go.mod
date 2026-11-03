@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/pinpointemail v1.29.4
 	github.com/aws/aws-sdk-go-v2/service/ses v1.34.11
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.54.4
-	github.com/mhale/smtpd v0.8.0
+	github.com/mhale/smtpd v0.8.3
 	golang.org/x/crypto v0.1.0
 )
 

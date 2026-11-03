@@ -142,6 +142,7 @@ func resetHelper() {
 	*allowFrom = ""
 	*denyTo = ""
 	ipMap = nil
+	denyToRegExp = nil
 	bcryptHash = nil
 	password = nil
 	relayClient = nil
