@@ -42,9 +42,10 @@ func (c Client) Send(
 		relay.Log(origin, from, deniedRecipients, err)
 	}
 	if len(allowedRecipients) > 0 {
+		// Avoid setting FromEmailAddress to let SES extract it from raw data.
+		// If set, it should include the friendly name (if one is used) and source email.
 		input := &sesv2.SendEmailInput{
 			ConfigurationSetName: c.setName,
-			FromEmailAddress:     &from,
 			Destination: &sesv2types.Destination{
 				ToAddresses: allowedRecipients,
 			},
