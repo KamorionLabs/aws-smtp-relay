@@ -30,6 +30,7 @@ Pull requests and contributions are welcome!
   - [Region](#region)
   - [Credentials](#credentials)
   - [SMTP replies](#smtp-replies)
+  - [Metrics](#metrics)
   - [Logging](#logging)
 - [Development](#development)
   - [Build](#build)
@@ -192,6 +193,8 @@ Usage of aws-smtp-relay:
         TLS key file
   -l string
         Allowed sender emails regular expression
+  -m string
+        HTTP listen address for /metrics and /healthz (off when empty)
   -n string
         SMTP service name (default "AWS SMTP Relay")
   -r string
@@ -402,6 +405,28 @@ An error of the setup gets `451`: after an operator fixes it, the same message
 goes through, so the client keeps it and does not bounce it.
 The `451` and `554` replies include only the API error code, for example
 `554 5.0.0 Message refused: MessageRejected`. The log has the full error.
+### Metrics
+
+To serve [Prometheus](https://prometheus.io/) metrics at `/metrics`, provide an
+HTTP listen address with the `-m addr` option or the `METRICS_ADDRESS`
+environment variable. The same address serves `/healthz`, which shows only that
+the process runs:
+
+```sh
+aws-smtp-relay -m :9090
+```
+
+| Metric                                 | Type      | Description                                                      |
+| -------------------------------------- | --------- | ---------------------------------------------------------------- |
+| `aws_smtp_relay_messages_total`        | counter   | Messages by `result`: `sent`, `denied` (by a filter) or `error`  |
+| `aws_smtp_relay_auth_failures_total`   | counter   | Failed SMTP authentications                                      |
+| `aws_smtp_relay_send_duration_seconds` | histogram | Time to handle a message, with the API request when there is one |
+
+The relay sends a message with some denied recipients to the other
+recipients, but counts it as `denied`.
+
+The relay also serves the Go runtime and process metrics of the Prometheus
+client. By default, it serves no metrics.
 
 ### Logging
 
