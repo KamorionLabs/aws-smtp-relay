@@ -40,6 +40,7 @@ Pull requests and contributions are welcome!
   - [Install](#install)
   - [Uninstall](#uninstall)
   - [Clean](#clean)
+  - [Release](#release)
 - [Dependencies](#dependencies)
 - [License](#license)
 
@@ -143,10 +144,13 @@ its service account (EKS Pod Identity or IRSA), Prometheus metrics, health
 probes, a PodDisruptionBudget and optional autoscaling:
 
 ```sh
-helm install aws-smtp-relay ./helm/aws-smtp-relay \
+helm install aws-smtp-relay oci://ghcr.io/kamorionlabs/charts/aws-smtp-relay \
   --namespace smtp --create-namespace \
   --set config.awsRegion=eu-west-1
 ```
+
+Each release publishes the chart with the same version as the relay. From a
+clone, install `./helm/aws-smtp-relay` instead.
 
 See the [EKS deployment guide](docs/EKS_DEPLOYMENT.md) for the IAM role and
 the Pod Identity association (Terraform or AWS CLI), and the
@@ -580,6 +584,21 @@ To remove any build artifacts, run the following:
 ```sh
 make clean
 ```
+
+### Release
+
+The [Release workflow](.github/workflows/release.yml) tags the version, runs
+GoReleaser (binaries, Docker Hub and GHCR images, GitHub release) and publishes
+the Helm chart to `oci://ghcr.io/kamorionlabs/charts`. It starts:
+
+- when a pull request with the label `release:patch`, `release:minor` or
+  `release:major` is merged into `main`: the version is the latest `vX.Y.Z`
+  tag with that part incremented;
+- from the Actions tab, with **Run workflow** on `main`: choose the part to
+  increment, or give an exact version;
+- when a `v*` tag is pushed.
+
+Pull requests without a release label are not released.
 
 ## Dependencies
 

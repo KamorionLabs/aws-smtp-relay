@@ -1,13 +1,143 @@
 name: Release
 
+# A release starts in one of three ways:
+# - automatically, when a pull request labeled release:patch, release:minor
+#   or release:major is merged into main;
+# - manually, from the Actions tab ("Run workflow"), with a bump or a version;
+# - by pushing a v* tag.
+# The tag is created and released in this same workflow: a tag pushed with
+# GITHUB_TOKEN does not trigger other workflows.
+
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version part to increment
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      version:
+        description: Exact version instead of a bump, e.g. 1.3.0 (optional)
+        type: string
+        required: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure the release labels exist
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create release:patch --force --color 0e8a16 --description "Release a patch version when merged"
+          gh label create release:minor --force --color 1d76db --description "Release a minor version when merged"
+          gh label create release:major --force --color b60205 --description "Release a major version when merged"
+
+      - name: Determine the bump
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF" == refs/tags/* ]]; then
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$REF" != refs/heads/main ]]; then
+            echo "::error::Releases are made from main only"
+            exit 1
+          fi
+          if [[ "$EVENT" == workflow_dispatch ]]; then
+            echo "bump=$INPUT_BUMP" >> "$GITHUB_OUTPUT"
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Push to main: look for a release label on the merged pull request.
+          labels=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[].labels[].name] | join(" ")')
+          bump=""
+          for part in patch minor major; do
+            if [[ " $labels " == *" release:$part "* ]]; then bump=$part; fi
+          done
+          if [[ -z "$bump" ]]; then
+            echo "No release label on the merged pull request: no release."
+          fi
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+
+      - name: Compute and push the tag
+        id: version
+        if: steps.bump.outputs.tag != '' || steps.bump.outputs.bump != '' || steps.bump.outputs.version != ''
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+          BUMP: ${{ steps.bump.outputs.bump }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$TAG" ]]; then
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          latest=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          latest=${latest:-v0.0.0}
+          if [[ -n "$VERSION" ]]; then
+            next="v${VERSION#v}"
+            if [[ ! "$next" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Invalid version: $VERSION"
+              exit 1
+            fi
+          else
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "$BUMP" in
+              major) next="v$((major + 1)).0.0" ;;
+              minor) next="v${major}.$((minor + 1)).0" ;;
+              *)     next="v${major}.${minor}.$((patch + 1))" ;;
+            esac
+          fi
+          if git rev-parse -q --verify "refs/tags/$next" > /dev/null; then
+            echo "::error::Tag $next already exists"
+            exit 1
+          fi
+          echo "Releasing $next (previous: $latest)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$next" -m "$next"
+          git push origin "refs/tags/$next"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
   release:
     name: Release
+    needs: prepare
+    if: needs.prepare.outputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -16,6 +146,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -50,3 +181,17 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: azure/setup-helm@v4
+
+      - name: Publish the Helm chart
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=${TAG#v}
+          helm package helm/aws-smtp-relay --version "$version" --app-version "$version" -d dist-chart
+          echo "$GHCR_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          owner=$(tr '[:upper:]' '[:lower:]' <<< "$GITHUB_REPOSITORY_OWNER")
+          helm push "dist-chart/aws-smtp-relay-$version.tgz" "oci://ghcr.io/$owner/charts"

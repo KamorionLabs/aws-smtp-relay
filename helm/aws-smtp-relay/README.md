@@ -15,15 +15,17 @@ For the IAM role and the Pod Identity association, see the
 ## Install
 
 ```sh
-helm install aws-smtp-relay ./helm/aws-smtp-relay \
+helm install aws-smtp-relay oci://ghcr.io/kamorionlabs/charts/aws-smtp-relay \
   --namespace smtp --create-namespace \
   --set config.awsRegion=eu-west-1
 ```
 
+Each release of the relay publishes the chart with the same version, and that
+version as the default image tag. From a clone, install `./helm/aws-smtp-relay`.
+
 Clients in the cluster send to `aws-smtp-relay.smtp.svc:1025`.
 
-The default image tag is the chart `appVersion`. Set `image.tag` to use another
-release.
+Set `image.tag` to run another release of the relay.
 
 ## Values
 
