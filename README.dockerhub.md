@@ -146,6 +146,8 @@ docker run -d \
 | `-i` | Allowed client IPs | - |
 | `-l` | Allowed sender emails regex | - |
 | `-d` | Denied recipient emails regex | - |
+| `-w` | Allowed recipient emails regex (also `ALLOWED_RECIPIENTS_REGEX`) | - |
+| `-W` | Allowed recipient domains, comma-separated (also `ALLOWED_RECIPIENT_DOMAINS`) | - |
 | `-o` | Amazon SES SourceArn (→ SESv2 FromEmailAddressIdentityArn) | - |
 | `-f` | Amazon SES FromArn (→ SESv2 FromEmailAddressIdentityArn) | - |
 | `-p` | Amazon SES ReturnPathArn (→ SESv2 FeedbackForwardingEmailAddressIdentityArn) | - |

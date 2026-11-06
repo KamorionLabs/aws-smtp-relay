@@ -203,6 +203,10 @@ Usage of aws-smtp-relay:
   -t    Listen for incoming TLS connections only
   -u string
         Authentication username
+  -w string
+        Allowed recipient emails regular expression
+  -W string
+        Allowed recipient domains (comma-separated)
 ```
 
 ### Authentication
@@ -333,6 +337,26 @@ option:
 ```sh
 aws-smtp-relay -d 'admin@example\.org$'
 ```
+
+To allow only certain recipient email addresses, provide an allow list as
+[regular expression](https://golang.org/pkg/regexp/syntax/) via `-w regexp`
+option, or the `ALLOWED_RECIPIENTS_REGEX` environment variable:
+
+```sh
+aws-smtp-relay -w '^[^@]+@example\.org$'
+```
+
+To allow only certain recipient domains, provide a comma-separated list via
+`-W domains` option, or the `ALLOWED_RECIPIENT_DOMAINS` environment variable.
+Domains match exactly and ignore case; subdomains must be listed on their own:
+
+```sh
+aws-smtp-relay -W 'example.org,mail.example.org'
+```
+
+A recipient is allowed only if it passes every filter that is set: it must not
+match the `-d` deny list, it must match the `-w` regular expression, and its
+domain must be in the `-W` list.
 
 A denied recipient is refused at `RCPT` with `550`, so the client can still
 send the message to the other recipients.

@@ -4,12 +4,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"regexp"
-	"strings"
 	"strconv"
-	"log"
+	"strings"
 
 	"github.com/KamorionLabs/aws-smtp-relay/internal/auth"
 	"github.com/KamorionLabs/aws-smtp-relay/internal/metrics"
@@ -21,27 +21,29 @@ import (
 )
 
 var (
-	addr          = flag.String("a", LookupEnvOrString("LISTEN_ADDRESS", ":1025"), "TCP listen address")
-	name          = flag.String("n", LookupEnvOrString("SMTP_SERVICE_NAME", "AWS SMTP Relay"), "SMTP service name")
-	host          = flag.String("h", LookupEnvOrString("HOSTNAME", ""), "Server hostname")
-	certFile      = flag.String("c", LookupEnvOrString("CERT_FILE", ""), "TLS cert file")
-	keyFile       = flag.String("k", LookupEnvOrString("KEY_FILE", ""), "TLS key file")
-	startTLS      = flag.Bool("s", LookupEnvOrBool("REQUIRE_STARTTLS", false), "Require TLS via STARTTLS extension")
-	onlyTLS       = flag.Bool("t", LookupEnvOrBool("REQUIRE_TLS", false), "Listen for incoming TLS connections only")
-	relayAPI      = flag.String("r", LookupEnvOrString("RELAY_API", "ses"), "Relay API to use (ses|pinpoint)")
-	setName       = flag.String("e", LookupEnvOrString("SES_CONFIGURATION_SET_NAME", ""), "Amazon SES Configuration Set Name")
-	ips           = flag.String("i", LookupEnvOrString("ALLOWED_IPS", ""), "Allowed client IPs (comma-separated)")
-	user          = flag.String("u", LookupEnvOrString("AUTH_USERNAME", ""), "Authentication username")
-	allowFrom     = flag.String("l", LookupEnvOrString("ALLOWED_SENDERS_REGEX", ""), "Allowed sender emails regular expression")
-	denyTo        = flag.String("d", LookupEnvOrString("DENIED_RECIPIENTS_REGEX", ""), "Denied recipient emails regular expression")
-	sourceArn     = flag.String("o", LookupEnvOrString("SES_SOURCE_ARN", ""), "Amazon SES SourceArn")
-	fromArn       = flag.String("f", LookupEnvOrString("SES_FROM_ARN", ""), "Amazon SES FromArn")
-	returnPathArn = flag.String("p", LookupEnvOrString("SES_RETURN_PATH_ARN", ""), "Amazon SES ReturnPathArn")
-	metricsAddr   = flag.String("m", LookupEnvOrString("METRICS_ADDRESS", ""), "HTTP listen address for /metrics and /healthz (off when empty)")
+	addr           = flag.String("a", LookupEnvOrString("LISTEN_ADDRESS", ":1025"), "TCP listen address")
+	name           = flag.String("n", LookupEnvOrString("SMTP_SERVICE_NAME", "AWS SMTP Relay"), "SMTP service name")
+	host           = flag.String("h", LookupEnvOrString("HOSTNAME", ""), "Server hostname")
+	certFile       = flag.String("c", LookupEnvOrString("CERT_FILE", ""), "TLS cert file")
+	keyFile        = flag.String("k", LookupEnvOrString("KEY_FILE", ""), "TLS key file")
+	startTLS       = flag.Bool("s", LookupEnvOrBool("REQUIRE_STARTTLS", false), "Require TLS via STARTTLS extension")
+	onlyTLS        = flag.Bool("t", LookupEnvOrBool("REQUIRE_TLS", false), "Listen for incoming TLS connections only")
+	relayAPI       = flag.String("r", LookupEnvOrString("RELAY_API", "ses"), "Relay API to use (ses|pinpoint)")
+	setName        = flag.String("e", LookupEnvOrString("SES_CONFIGURATION_SET_NAME", ""), "Amazon SES Configuration Set Name")
+	ips            = flag.String("i", LookupEnvOrString("ALLOWED_IPS", ""), "Allowed client IPs (comma-separated)")
+	user           = flag.String("u", LookupEnvOrString("AUTH_USERNAME", ""), "Authentication username")
+	allowFrom      = flag.String("l", LookupEnvOrString("ALLOWED_SENDERS_REGEX", ""), "Allowed sender emails regular expression")
+	denyTo         = flag.String("d", LookupEnvOrString("DENIED_RECIPIENTS_REGEX", ""), "Denied recipient emails regular expression")
+	allowTo        = flag.String("w", LookupEnvOrString("ALLOWED_RECIPIENTS_REGEX", ""), "Allowed recipient emails regular expression")
+	allowToDomains = flag.String("W", LookupEnvOrString("ALLOWED_RECIPIENT_DOMAINS", ""), "Allowed recipient domains (comma-separated)")
+	sourceArn      = flag.String("o", LookupEnvOrString("SES_SOURCE_ARN", ""), "Amazon SES SourceArn")
+	fromArn        = flag.String("f", LookupEnvOrString("SES_FROM_ARN", ""), "Amazon SES FromArn")
+	returnPathArn  = flag.String("p", LookupEnvOrString("SES_RETURN_PATH_ARN", ""), "Amazon SES ReturnPathArn")
+	metricsAddr    = flag.String("m", LookupEnvOrString("METRICS_ADDRESS", ""), "HTTP listen address for /metrics and /healthz (off when empty)")
 )
 
 var ipMap map[string]bool
-var denyToRegExp *regexp.Regexp
+var filter *relay.Filter
 var bcryptHash []byte
 var password []byte
 var relayClient relay.Client
@@ -88,17 +90,17 @@ func server() (srv *smtpd.Server, err error) {
 	if LookupEnvOrString("ENABLE_LOGIN", "") == "true" {
 		authMechs["LOGIN"] = true
 	}
-	
+
 	version := LookupEnvOrString("GIT_REV", "")
 	if version == "" {
 		log.Printf("Listening on %v\r\n", *addr)
-	}else{
+	} else {
 		log.Printf("(Revision: %s) Listening on %v\r\n", version, *addr)
 	}
 	srv = &smtpd.Server{
 		Addr:         *addr,
 		Handler:      handler,
-		HandlerRcpt:  relay.RcptHandler(denyToRegExp),
+		HandlerRcpt:  relay.RcptHandler(filter),
 		Appname:      *name,
 		Hostname:     *host,
 		TLSRequired:  *startTLS,
@@ -118,20 +120,29 @@ func server() (srv *smtpd.Server, err error) {
 	return
 }
 
-func configure() error {
-	var allowFromRegExp *regexp.Regexp
-	var err error
-	if *allowFrom != "" {
-		allowFromRegExp, err = regexp.Compile(*allowFrom)
-		if err != nil {
-			return errors.New("Allowed sender emails: " + err.Error())
-		}
+// compileRegexp compiles expr, or returns nil when expr is empty.
+func compileRegexp(name, expr string) (*regexp.Regexp, error) {
+	if expr == "" {
+		return nil, nil
 	}
-	if *denyTo != "" {
-		denyToRegExp, err = regexp.Compile(*denyTo)
-		if err != nil {
-			return errors.New("Denied recipient emails: " + err.Error())
-		}
+	re, err := regexp.Compile(expr)
+	if err != nil {
+		return nil, errors.New(name + ": " + err.Error())
+	}
+	return re, nil
+}
+
+func configure() error {
+	var err error
+	filter = &relay.Filter{AllowToDomains: relay.ParseDomains(*allowToDomains)}
+	if filter.AllowFrom, err = compileRegexp("Allowed sender emails", *allowFrom); err != nil {
+		return err
+	}
+	if filter.DenyTo, err = compileRegexp("Denied recipient emails", *denyTo); err != nil {
+		return err
+	}
+	if filter.AllowTo, err = compileRegexp("Allowed recipient emails", *allowTo); err != nil {
+		return err
 	}
 	var arns *relay.ARNs
 	// Configure ARNs for cross-account authorization if any ARN is provided
@@ -153,9 +164,9 @@ func configure() error {
 	}
 	switch *relayAPI {
 	case "pinpoint":
-		relayClient = pinpointrelay.New(setName, allowFromRegExp, denyToRegExp)
+		relayClient = pinpointrelay.New(setName, filter)
 	case "ses":
-		relayClient = sesrelay.New(setName, allowFromRegExp, denyToRegExp, arns)
+		relayClient = sesrelay.New(setName, filter, arns)
 	default:
 		return errors.New("Invalid relay API: " + *relayAPI)
 	}
@@ -194,7 +205,7 @@ func LookupEnvOrBool(key string, defaultVal bool) bool {
 		val = strings.ToLower(val)
 		if val == "true" {
 			return true
-		}else if val == "false" {
+		} else if val == "false" {
 			return false
 		}
 		log.Fatalf("LookupEnvOrBool[%s]: invalid value %v", key, val)
