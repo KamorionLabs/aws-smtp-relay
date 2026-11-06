@@ -1,0 +1,32 @@
+# Example values for EKS with Pod Identity.
+#
+# Create the Pod Identity association for the service account "aws-smtp-relay"
+# in the release namespace (see docs/EKS_DEPLOYMENT.md, Terraform or AWS CLI).
+
+serviceAccount:
+  name: aws-smtp-relay
+
+config:
+  relayAPI: ses
+  awsRegion: eu-west-1
+  # setName: my-configuration-set
+
+  # Authentication: reference a secret with the key "bcrypt-hash", created with
+  #   kubectl -n smtp create secret generic aws-smtp-relay-auth \
+  #     --from-literal=bcrypt-hash="$(htpasswd -bnBC 10 '' "$PASSWORD" | tr -d ':\n' | sed 's/$2y/$2a/')"
+  user: relay
+  existingSecret: aws-smtp-relay-auth
+
+  allowFrom: '@example\.com$'
+  allowToDomains: "example.com,example.org"
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 80

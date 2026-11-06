@@ -17,6 +17,7 @@ Pull requests and contributions are welcome!
 
 - [Background](#background)
 - [Docker](#docker)
+- [Kubernetes/Helm](#kuberneteshelm)
 - [Installation](#installation)
 - [Usage](#usage)
   - [Options](#options)
@@ -134,6 +135,22 @@ docker run -d \
   -e AWS_REGION=eu-west-1 \
   kamorion/aws-smtp-relay:edge
 ```
+
+## Kubernetes/Helm
+
+The [Helm chart](helm/aws-smtp-relay) deploys the relay with the IAM role of
+its service account (EKS Pod Identity or IRSA), Prometheus metrics, health
+probes, a PodDisruptionBudget and optional autoscaling:
+
+```sh
+helm install aws-smtp-relay ./helm/aws-smtp-relay \
+  --namespace smtp --create-namespace \
+  --set config.awsRegion=eu-west-1
+```
+
+See the [EKS deployment guide](docs/EKS_DEPLOYMENT.md) for the IAM role and
+the Pod Identity association (Terraform or AWS CLI), and the
+[chart README](helm/aws-smtp-relay/README.md) for all values.
 
 ## Installation
 

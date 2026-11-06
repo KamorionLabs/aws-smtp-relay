@@ -120,3 +120,35 @@ jobs:
           tags: kamorion/aws-smtp-relay:test-alpine
           build-args: |
             TARGETPLATFORM=linux/amd64
+
+  helm:
+    name: Helm Chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint chart
+        run: helm lint --strict helm/aws-smtp-relay
+
+      - name: Render chart
+        run: |
+          set -euo pipefail
+          chart=helm/aws-smtp-relay
+          # Default values
+          helm template smtp "$chart" > /dev/null
+          # EKS example
+          helm template smtp "$chart" -f "$chart/examples/values-eks-pod-identity.yaml" > /dev/null
+          # TLS, inline auth, ServiceMonitor, HPA, hard anti-affinity
+          helm template smtp "$chart" \
+            --set config.user=relay,config.bcryptHash=hash,config.password=pass \
+            --set config.tls.enabled=true,config.tls.cert=cert,config.tls.key=key,config.tls.keyPassphrase=pass \
+            --set metrics.serviceMonitor.enabled=true,autoscaling.enabled=true \
+            --set podAntiAffinityPreset=hard > /dev/null
+          # No metrics: TCP probes
+          out=$(helm template smtp "$chart" --set metrics.enabled=false,podDisruptionBudget.enabled=false,podAntiAffinityPreset=)
+          grep -q 'tcpSocket' <<<"$out"
+          if grep -q 'METRICS_ADDRESS' <<<"$out"; then exit 1; fi
+          # TLS without a certificate must fail
+          if helm template smtp "$chart" --set config.tls.enabled=true > /dev/null 2>&1; then exit 1; fi
