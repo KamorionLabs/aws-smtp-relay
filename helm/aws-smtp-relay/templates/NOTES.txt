@@ -1,0 +1,26 @@
+aws-smtp-relay listens for SMTP on:
+
+  {{ include "aws-smtp-relay.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+
+{{- if not .Values.config.awsRegion }}
+
+WARNING: config.awsRegion is empty. Set it, or AWS_REGION through env/envFrom.
+{{- end }}
+{{- if and (not .Values.config.user) (not .Values.config.ips) }}
+
+WARNING: neither config.user nor config.ips is set: any client that can reach
+the service can send email. Restrict access with a NetworkPolicy or set one of them.
+{{- end }}
+
+AWS credentials come from the service account
+"{{ include "aws-smtp-relay.serviceAccountName" . }}". With EKS Pod Identity:
+
+  aws eks create-pod-identity-association \
+    --cluster-name <cluster> \
+    --namespace {{ .Release.Namespace }} \
+    --service-account {{ include "aws-smtp-relay.serviceAccountName" . }} \
+    --role-arn <role-arn>
+{{- if .Values.metrics.enabled }}
+
+Prometheus metrics: http://{{ include "aws-smtp-relay.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.metrics.port }}/metrics
+{{- end }}

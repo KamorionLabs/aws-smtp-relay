@@ -1,0 +1,171 @@
+# Default values for aws-smtp-relay
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/kamorionlabs/aws-smtp-relay
+  pullPolicy: IfNotPresent
+  # Defaults to the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# AWS credentials come from the pod's service account:
+# - EKS Pod Identity: nothing to set here. Create the association with the
+#   AWS CLI or Terraform for the service account below (see docs/EKS_DEPLOYMENT.md).
+# - IRSA: set serviceAccount.annotations."eks.amazonaws.com/role-arn".
+serviceAccount:
+  create: true
+  annotations: {}
+  # Defaults to the release full name.
+  name: ""
+  # The relay does not call the Kubernetes API. Pod Identity and IRSA inject
+  # their own token volume, so the default service account token is not needed.
+  automountServiceAccountToken: false
+
+service:
+  type: ClusterIP
+  port: 1025
+  annotations: {}
+
+config:
+  # SMTP listen port inside the container (LISTEN_ADDRESS is ":<port>").
+  port: 1025
+  # SMTP service name (SMTP_SERVICE_NAME).
+  name: "AWS SMTP Relay"
+  # Server hostname announced in the SMTP greeting (HOSTNAME). Defaults to the
+  # pod name.
+  hostname: ""
+
+  # Relay API: ses or pinpoint (RELAY_API).
+  relayAPI: "ses"
+  # AWS region (AWS_REGION). Required unless set through env.
+  awsRegion: ""
+  # SES configuration set name (SES_CONFIGURATION_SET_NAME).
+  setName: ""
+
+  # Cross-account ARNs (SES_SOURCE_ARN, SES_FROM_ARN, SES_RETURN_PATH_ARN).
+  sourceArn: ""
+  fromArn: ""
+  returnPathArn: ""
+
+  # Authentication (AUTH_USERNAME). With a user, set either:
+  # - bcryptHash (recommended): enables PLAIN and LOGIN.
+  #   Generate with: htpasswd -bnBC 10 "" password | tr -d ':\n' | sed 's/$2y/$2a/'
+  # - password: plain text password, also enables CRAM-MD5.
+  # Or reference an existing secret with existingSecret.
+  user: ""
+  bcryptHash: ""
+  password: ""
+  # Name of an existing secret with the keys "bcrypt-hash" and/or "password".
+  # When set, bcryptHash and password above are ignored.
+  existingSecret: ""
+  # Enable the LOGIN mechanism without TLS (ENABLE_LOGIN). Not recommended.
+  enableLogin: false
+
+  # Allowed client IPs, comma-separated (ALLOWED_IPS).
+  ips: ""
+  # Allowed sender emails regexp (ALLOWED_SENDERS_REGEX).
+  allowFrom: ""
+  # Denied recipient emails regexp (DENIED_RECIPIENTS_REGEX).
+  denyTo: ""
+  # Allowed recipient emails regexp (ALLOWED_RECIPIENTS_REGEX).
+  allowTo: ""
+  # Allowed recipient domains, comma-separated (ALLOWED_RECIPIENT_DOMAINS).
+  allowToDomains: ""
+
+  tls:
+    enabled: false
+    # Name of an existing kubernetes.io/tls secret (e.g. from cert-manager).
+    # When empty, the chart creates one from cert and key.
+    existingSecret: ""
+    cert: ""
+    key: ""
+    # Passphrase of an encrypted key (TLS_KEY_PASS).
+    keyPassphrase: ""
+    # Require TLS via STARTTLS (REQUIRE_STARTTLS).
+    requireStartTLS: true
+    # Listen for TLS connections only (REQUIRE_TLS).
+    onlyTLS: false
+
+# Prometheus metrics and /healthz (METRICS_ADDRESS).
+metrics:
+  enabled: true
+  port: 9090
+  serviceMonitor:
+    # Requires the Prometheus Operator CRDs.
+    enabled: false
+    interval: 30s
+    labels: {}
+
+# Environment variables from existing secrets or config maps.
+envFrom: []
+# - secretRef:
+#     name: aws-smtp-relay-secrets
+
+# Additional environment variables.
+env: []
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  # The distroless "nonroot" user of the image.
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+resources:
+  limits:
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: ""
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+# Spread the pods over nodes: "soft", "hard" or "" (none). Ignored when
+# affinity is set.
+podAntiAffinityPreset: soft
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+# Probes. With metrics enabled, they use GET /healthz on the metrics port;
+# otherwise a TCP check of the SMTP port.
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 2
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3

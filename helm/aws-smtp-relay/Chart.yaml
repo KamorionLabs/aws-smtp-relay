@@ -1,0 +1,18 @@
+apiVersion: v2
+name: aws-smtp-relay
+description: SMTP relay to Amazon SES or Pinpoint using IAM roles (EKS Pod Identity or IRSA)
+type: application
+version: 0.1.0
+appVersion: "1.3.0"
+keywords:
+  - smtp
+  - aws
+  - ses
+  - pinpoint
+  - relay
+  - eks
+home: https://github.com/KamorionLabs/aws-smtp-relay
+sources:
+  - https://github.com/KamorionLabs/aws-smtp-relay
+maintainers:
+  - name: Kamorion Labs
