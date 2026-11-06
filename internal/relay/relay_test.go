@@ -246,3 +246,69 @@ func TestFilterAddressesWithDeniedRecipients(t *testing.T) {
 		)
 	}
 }
+
+func TestFilterCheckRecipient(t *testing.T) {
+	f := &Filter{
+		DenyTo:         regexp.MustCompile(`^admin@`),
+		AllowTo:        regexp.MustCompile(`^[a-z]+@`),
+		AllowToDomains: ParseDomains("example.org, Example.NET"),
+	}
+	cases := []struct {
+		to   string
+		want error
+	}{
+		{"bob@example.org", nil},
+		{"bob@EXAMPLE.net", nil},
+		{"admin@example.org", ErrDeniedRecipients},
+		{"bob2@example.org", ErrRecipientsNotAllowed},
+		{"bob@example.com", ErrRecipientsNotAllowed},
+		{"bob@sub.example.org", ErrRecipientsNotAllowed},
+		{"bob@example.org@evil.com", ErrRecipientsNotAllowed},
+		{"bob", ErrRecipientsNotAllowed},
+	}
+	for _, tc := range cases {
+		if got := f.CheckRecipient(tc.to); got != tc.want {
+			t.Errorf("CheckRecipient(%q) = %v, want %v", tc.to, got, tc.want)
+		}
+	}
+	var nilFilter *Filter
+	if err := nilFilter.CheckRecipient("anyone@example.com"); err != nil {
+		t.Errorf("nil filter: %v", err)
+	}
+}
+
+func TestErrRecipientsNotAllowedIsDeniedRecipients(t *testing.T) {
+	if !errors.Is(ErrRecipientsNotAllowed, ErrDeniedRecipients) {
+		t.Error("ErrRecipientsNotAllowed does not match ErrDeniedRecipients")
+	}
+	if errors.Is(ErrDeniedRecipients, ErrRecipientsNotAllowed) {
+		t.Error("ErrDeniedRecipients matches ErrRecipientsNotAllowed")
+	}
+}
+
+func TestFilterAddressesWithAllowLists(t *testing.T) {
+	f := &Filter{AllowToDomains: []string{"example.org"}}
+	allowed, denied, err := f.Addresses(
+		"alice@example.org",
+		[]string{"bob@example.org", "carol@example.com"},
+	)
+	if err != ErrRecipientsNotAllowed {
+		t.Errorf("Unexpected error: %v. Expected: %v", err, ErrRecipientsNotAllowed)
+	}
+	if len(allowed) != 1 || allowed[0] != "bob@example.org" {
+		t.Errorf("Unexpected allowed recipients: %v", allowed)
+	}
+	if len(denied) != 1 || denied[0] != "carol@example.com" {
+		t.Errorf("Unexpected denied recipients: %v", denied)
+	}
+}
+
+func TestParseDomains(t *testing.T) {
+	got := ParseDomains(" Example.org,,@example.net , ")
+	if len(got) != 2 || got[0] != "example.org" || got[1] != "example.net" {
+		t.Errorf("Unexpected domains: %v", got)
+	}
+	if ParseDomains("") != nil {
+		t.Error("Expected nil for an empty list")
+	}
+}

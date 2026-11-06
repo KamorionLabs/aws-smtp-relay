@@ -141,8 +141,10 @@ func resetHelper() {
 	*user = ""
 	*allowFrom = ""
 	*denyTo = ""
+	*allowTo = ""
+	*allowToDomains = ""
 	ipMap = nil
-	denyToRegExp = nil
+	filter = nil
 	bcryptHash = nil
 	password = nil
 	relayClient = nil
@@ -271,6 +273,31 @@ func TestConfigureWithInvalidDenyTo(t *testing.T) {
 	*denyTo = "("
 	err := configure()
 	if err == nil {
+		t.Error("Unexpected nil error")
+	}
+}
+
+func TestConfigureWithAllowTo(t *testing.T) {
+	resetHelper()
+	*allowTo = "@example\\.org$"
+	*allowToDomains = " Example.org, @example.net ,"
+	if err := configure(); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	if filter.AllowTo == nil || filter.AllowTo.String() != `@example\.org$` {
+		t.Errorf("Unexpected AllowTo: %v", filter.AllowTo)
+	}
+	want := []string{"example.org", "example.net"}
+	if len(filter.AllowToDomains) != 2 || filter.AllowToDomains[0] != want[0] ||
+		filter.AllowToDomains[1] != want[1] {
+		t.Errorf("Unexpected AllowToDomains: %v. Expected: %v", filter.AllowToDomains, want)
+	}
+}
+
+func TestConfigureWithInvalidAllowTo(t *testing.T) {
+	resetHelper()
+	*allowTo = "("
+	if err := configure(); err == nil {
 		t.Error("Unexpected nil error")
 	}
 }

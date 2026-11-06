@@ -80,14 +80,27 @@ func TestReply(t *testing.T) {
 
 func TestRcptHandler(t *testing.T) {
 	origin := &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}
-	accept := RcptHandler(regexp.MustCompile(`^bob@`))
+	accept := RcptHandler(&Filter{
+		DenyTo:         regexp.MustCompile(`^bob@`),
+		AllowToDomains: []string{"example.org"},
+	})
 	if !accept(origin, "alice@example.org", "carol@example.org") {
 		t.Error("an allowed recipient was refused")
 	}
 	if accept(origin, "alice@example.org", "bob@example.org") {
 		t.Error("a denied recipient was accepted")
 	}
+	if accept(origin, "alice@example.org", "carol@example.net") {
+		t.Error("a recipient outside the allowed domains was accepted")
+	}
 	if !RcptHandler(nil)(origin, "alice@example.org", "bob@example.org") {
-		t.Error("a recipient was refused without a deny regexp")
+		t.Error("a recipient was refused without a filter")
+	}
+}
+
+func TestReplyRecipientsNotAllowed(t *testing.T) {
+	want := "550 5.7.1 Recipient address not allowed"
+	if got := Reply(ErrRecipientsNotAllowed).Error(); got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

@@ -53,10 +53,9 @@ func sendHelper(
 	os.Stderr = errWriter
 	func() {
 		c := Client{
-			pinpointClient:  &mockPinpointEmailClient{},
-			setName:         configurationSetName,
-			allowFromRegExp: allowFromRegExp,
-			denyToRegExp:    denyToRegExp,
+			pinpointClient: &mockPinpointEmailClient{},
+			setName:        configurationSetName,
+			filter:         &relay.Filter{AllowFrom: allowFromRegExp, DenyTo: denyToRegExp},
 		}
 		testData.err = apiErr
 		sendErr = c.Send(origin, from, to, data)
@@ -244,7 +243,8 @@ func TestNew(t *testing.T) {
 	setName := ""
 	allowFromRegExp, _ := regexp.Compile(`^admin@example\.org$`)
 	denyToRegExp, _ := regexp.Compile(`^bob@example\.org$`)
-	client := New(&setName, allowFromRegExp, denyToRegExp)
+	filter := &relay.Filter{AllowFrom: allowFromRegExp, DenyTo: denyToRegExp}
+	client := New(&setName, filter)
 	_, ok := interface{}(client).(relay.Client)
 	if !ok {
 		t.Error("Unexpected: client is not a relay.Client")
@@ -252,10 +252,7 @@ func TestNew(t *testing.T) {
 	if client.setName != &setName {
 		t.Errorf("Unexpected setName: %s", *client.setName)
 	}
-	if client.allowFromRegExp != allowFromRegExp {
-		t.Errorf("Unexpected allowFromRegExp: %s", client.allowFromRegExp)
-	}
-	if client.denyToRegExp != denyToRegExp {
-		t.Errorf("Unexpected denyToRegExp: %s", client.denyToRegExp)
+	if client.filter != filter {
+		t.Errorf("Unexpected filter: %v", client.filter)
 	}
 }

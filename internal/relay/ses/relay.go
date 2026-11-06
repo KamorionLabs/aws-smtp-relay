@@ -3,7 +3,6 @@ package relay
 import (
 	"context"
 	"net"
-	"regexp"
 
 	"github.com/KamorionLabs/aws-smtp-relay/internal/relay"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -18,11 +17,10 @@ type SESEmailClient interface {
 
 // Client implements the Relay interface.
 type Client struct {
-	sesClient       SESEmailClient
-	setName         *string
-	allowFromRegExp *regexp.Regexp
-	denyToRegExp    *regexp.Regexp
-	arns            *relay.ARNs
+	sesClient SESEmailClient
+	setName   *string
+	filter    *relay.Filter
+	arns      *relay.ARNs
 }
 
 // Send uses the client SESEmailClient to send email data via SESv2 API
@@ -32,12 +30,7 @@ func (c Client) Send(
 	to []string,
 	data []byte,
 ) error {
-	allowedRecipients, deniedRecipients, err := relay.FilterAddresses(
-		from,
-		to,
-		c.allowFromRegExp,
-		c.denyToRegExp,
-	)
+	allowedRecipients, deniedRecipients, err := c.filter.Addresses(from, to)
 	if err != nil {
 		relay.Log(origin, from, deniedRecipients, err)
 	}
@@ -80,8 +73,7 @@ func (c Client) Send(
 // New creates a new client with AWS SDK v2 configuration using SESv2 API.
 func New(
 	configurationSetName *string,
-	allowFromRegExp *regexp.Regexp,
-	denyToRegExp *regexp.Regexp,
+	filter *relay.Filter,
 	arns *relay.ARNs,
 ) Client {
 	cfg, err := config.LoadDefaultConfig(context.Background())
@@ -89,10 +81,9 @@ func New(
 		panic("unable to load SDK config, " + err.Error())
 	}
 	return Client{
-		sesClient:       sesv2.NewFromConfig(cfg),
-		setName:         configurationSetName,
-		allowFromRegExp: allowFromRegExp,
-		denyToRegExp:    denyToRegExp,
-		arns:            arns,
+		sesClient: sesv2.NewFromConfig(cfg),
+		setName:   configurationSetName,
+		filter:    filter,
+		arns:      arns,
 	}
 }

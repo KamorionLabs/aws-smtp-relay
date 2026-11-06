@@ -110,3 +110,23 @@ func TestServerRefusesDeniedRecipientAtRcpt(t *testing.T) {
 		t.Errorf("the relay was called for %v, want [carol@example.org]", fake.to)
 	}
 }
+
+func TestServerRefusesRecipientOutsideAllowedDomainsAtRcpt(t *testing.T) {
+	resetHelper()
+	*allowToDomains = "example.org"
+	fake := &fakeRelay{}
+	c, err := smtp.Dial(startServer(t, fake))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if err := c.Mail("alice@example.org"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Rcpt("carol@example.org"); err != nil {
+		t.Fatal(err)
+	}
+	if code := replyCode(t, c.Rcpt("dave@example.com")); code != 550 {
+		t.Errorf("want 550 at RCPT, got %d", code)
+	}
+}
