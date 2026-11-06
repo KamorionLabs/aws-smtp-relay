@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -11,10 +12,12 @@ import (
 	"log"
 
 	"github.com/KamorionLabs/aws-smtp-relay/internal/auth"
+	"github.com/KamorionLabs/aws-smtp-relay/internal/metrics"
 	"github.com/KamorionLabs/aws-smtp-relay/internal/relay"
 	pinpointrelay "github.com/KamorionLabs/aws-smtp-relay/internal/relay/pinpoint"
 	sesrelay "github.com/KamorionLabs/aws-smtp-relay/internal/relay/ses"
 	"github.com/mhale/smtpd"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -34,12 +37,38 @@ var (
 	sourceArn     = flag.String("o", LookupEnvOrString("SES_SOURCE_ARN", ""), "Amazon SES SourceArn")
 	fromArn       = flag.String("f", LookupEnvOrString("SES_FROM_ARN", ""), "Amazon SES FromArn")
 	returnPathArn = flag.String("p", LookupEnvOrString("SES_RETURN_PATH_ARN", ""), "Amazon SES ReturnPathArn")
+	metricsAddr   = flag.String("m", LookupEnvOrString("METRICS_ADDRESS", ""), "HTTP listen address for /metrics and /healthz (off when empty)")
 )
 
 var ipMap map[string]bool
+var denyToRegExp *regexp.Regexp
 var bcryptHash []byte
 var password []byte
 var relayClient relay.Client
+
+// handler sends the mail and gives the client a reply code that tells it
+// whether to try again.
+func handler(origin net.Addr, from string, to []string, data []byte) error {
+	return relay.Reply(relayClient.Send(origin, from, to, data))
+}
+
+// startMetrics counts the messages and failed logins of srv, and serves the
+// counts on addr in the background. A failure of that server does not stop
+// the relay.
+func startMetrics(srv *smtpd.Server, addr string, reg prometheus.Registerer, g prometheus.Gatherer) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return errors.New("Metrics address: " + err.Error())
+	}
+	m := metrics.New(reg)
+	srv.Handler = m.Handler(srv.Handler)
+	srv.AuthHandler = m.AuthHandler(srv.AuthHandler)
+	go func() {
+		log.Printf("Metrics server stopped: %v\r\n", metrics.Serve(ln, g))
+	}()
+	log.Printf("Serving metrics on %v\r\n", ln.Addr())
+	return nil
+}
 
 // toStringPtr returns nil for empty strings, otherwise returns a pointer to the string
 func toStringPtr(s string) *string {
@@ -68,7 +97,8 @@ func server() (srv *smtpd.Server, err error) {
 	}
 	srv = &smtpd.Server{
 		Addr:         *addr,
-		Handler:      relayClient.Send,
+		Handler:      handler,
+		HandlerRcpt:  relay.RcptHandler(denyToRegExp),
 		Appname:      *name,
 		Hostname:     *host,
 		TLSRequired:  *startTLS,
@@ -90,7 +120,6 @@ func server() (srv *smtpd.Server, err error) {
 
 func configure() error {
 	var allowFromRegExp *regexp.Regexp
-	var denyToRegExp *regexp.Regexp
 	var err error
 	if *allowFrom != "" {
 		allowFromRegExp, err = regexp.Compile(*allowFrom)
@@ -179,6 +208,9 @@ func main() {
 	err := configure()
 	if err == nil {
 		srv, err = server()
+		if err == nil && *metricsAddr != "" {
+			err = startMetrics(srv, *metricsAddr, prometheus.DefaultRegisterer, prometheus.DefaultGatherer)
+		}
 		if err == nil {
 			err = srv.ListenAndServe()
 		}

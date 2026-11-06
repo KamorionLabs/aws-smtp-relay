@@ -76,11 +76,12 @@ func TestSend(t *testing.T) {
 	data := []byte{'T', 'E', 'S', 'T'}
 	setName := ""
 	input, out, err, _ := sendHelper(&origin, from, to, data, &setName, nil, nil, nil, nil)
-	if *input.FromEmailAddress != from {
+	// FromEmailAddress stays unset so that SES keeps the From header of the
+	// raw message, including its display name.
+	if input.FromEmailAddress != nil {
 		t.Errorf(
-			"Unexpected source: %s. Expected: %s",
+			"Unexpected FromEmailAddress: %s. Expected: nil",
 			*input.FromEmailAddress,
-			from,
 		)
 	}
 	if len(input.Destination.ToAddresses) != 1 {
@@ -205,11 +206,12 @@ func TestSendWithApiError(t *testing.T) {
 	setName := ""
 	apiErr := errors.New("API failure")
 	input, out, err, sendErr := sendHelper(&origin, from, to, data, &setName, nil, nil, nil, apiErr)
-	if *input.FromEmailAddress != from {
+	// FromEmailAddress stays unset so that SES keeps the From header of the
+	// raw message, including its display name.
+	if input.FromEmailAddress != nil {
 		t.Errorf(
-			"Unexpected source: %s. Expected: %s",
+			"Unexpected FromEmailAddress: %s. Expected: nil",
 			*input.FromEmailAddress,
-			from,
 		)
 	}
 	if len(input.Destination.ToAddresses) != 1 {

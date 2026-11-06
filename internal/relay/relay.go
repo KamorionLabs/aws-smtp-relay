@@ -95,3 +95,16 @@ func FilterAddresses(
 	}
 	return
 }
+
+// RcptHandler refuses a recipient that matches denyToRegExp at RCPT. A refusal
+// after DATA would come after the send to the other recipients, and the
+// client would send the message to them again.
+func RcptHandler(denyToRegExp *regexp.Regexp) func(origin net.Addr, from string, to string) bool {
+	return func(origin net.Addr, from string, to string) bool {
+		if denyToRegExp != nil && denyToRegExp.MatchString(to) {
+			Log(origin, from, []string{to}, ErrDeniedRecipients)
+			return false
+		}
+		return true
+	}
+}

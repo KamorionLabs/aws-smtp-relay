@@ -29,6 +29,8 @@ Pull requests and contributions are welcome!
     - [Recipients](#recipients)
   - [Region](#region)
   - [Credentials](#credentials)
+  - [SMTP replies](#smtp-replies)
+  - [Metrics](#metrics)
   - [Logging](#logging)
 - [Development](#development)
   - [Build](#build)
@@ -191,6 +193,8 @@ Usage of aws-smtp-relay:
         TLS key file
   -l string
         Allowed sender emails regular expression
+  -m string
+        HTTP listen address for /metrics and /healthz (off when empty)
   -n string
         SMTP service name (default "AWS SMTP Relay")
   -r string
@@ -330,6 +334,9 @@ option:
 aws-smtp-relay -d 'admin@example\.org$'
 ```
 
+A denied recipient is refused at `RCPT` with `550`, so the client can still
+send the message to the other recipients.
+
 By default, all recipient email addresses are allowed.
 
 ### Cross-Account Authorization
@@ -379,6 +386,47 @@ security credentials for the IAM role are automatically retrieved:
 
 - [IAM Roles for Amazon EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html)
 - [IAM Roles for Tasks](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html)
+
+### SMTP replies
+
+The reply tells the SMTP client whether to try again:
+
+| Result                                                                                                                          | Reply       |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| The API accepted the message                                                                                                    | `250`       |
+| Denied sender (after `DATA`)                                                                                                    | `550 5.7.1` |
+| Denied recipient (at `RCPT`)                                                                                                    | `550 5.1.0` |
+| Throttling, a `429` or `5xx` from the API, a network error or timeout                                                           | `451 4.3.0` |
+| An error of the setup: a `401` or `403` (e.g. `AccessDenied`), `SendingPaused`, `AccountSuspended`, `MailFromDomainNotVerified` | `451 4.3.0` |
+| Any other API error, e.g. `MessageRejected`                                                                                     | `554 5.0.0` |
+
+A `4xx` reply makes the client try again later. A `5xx` reply makes it give up.
+An error of the setup gets `451`: after an operator fixes it, the same message
+goes through, so the client keeps it and does not bounce it.
+The `451` and `554` replies include only the API error code, for example
+`554 5.0.0 Message refused: MessageRejected`. The log has the full error.
+### Metrics
+
+To serve [Prometheus](https://prometheus.io/) metrics at `/metrics`, provide an
+HTTP listen address with the `-m addr` option or the `METRICS_ADDRESS`
+environment variable. The same address serves `/healthz`, which shows only that
+the process runs:
+
+```sh
+aws-smtp-relay -m :9090
+```
+
+| Metric                                 | Type      | Description                                                      |
+| -------------------------------------- | --------- | ---------------------------------------------------------------- |
+| `aws_smtp_relay_messages_total`        | counter   | Messages by `result`: `sent`, `denied` (by a filter) or `error`  |
+| `aws_smtp_relay_auth_failures_total`   | counter   | Failed SMTP authentications                                      |
+| `aws_smtp_relay_send_duration_seconds` | histogram | Time to handle a message, with the API request when there is one |
+
+The relay sends a message with some denied recipients to the other
+recipients, but counts it as `denied`.
+
+The relay also serves the Go runtime and process metrics of the Prometheus
+client. By default, it serves no metrics.
 
 ### Logging
 
